@@ -18,7 +18,7 @@
       overflow: hidden;
       background: #120c08;
       font-family: Georgia, serif;
-      touch-action: none;
+      touch-action: pan-y;
     }
 
     body {
@@ -75,49 +75,87 @@
         calc(max(64px, env(safe-area-inset-top) + 52px))
         14px
         calc(max(72px, env(safe-area-inset-bottom) + 56px));
-      perspective: 1800px;
     }
 
-    .frame {
+    .book-wrap {
+      width: min(92vw, 460px);
+      height: min(78dvh, 760px);
+      perspective: 2200px;
+      position: relative;
+    }
+
+    .book-shadow {
+      position: absolute;
+      inset: auto 8% 2% 8%;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.35);
+      filter: blur(14px);
+      z-index: 0;
+    }
+
+    .book {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+      z-index: 1;
+    }
+
+    .page {
+      position: absolute;
+      inset: 0;
+      transform-origin: left center;
+      transform-style: preserve-3d;
+      transition: transform 0.95s cubic-bezier(0.22, 0.8, 0.2, 1), z-index 0.3s;
+      border-radius: 24px;
+      overflow: visible;
+    }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 24px;
+      background: linear-gradient(90deg, rgba(0,0,0,0.18), rgba(255,255,255,0.02) 12%, rgba(255,255,255,0) 30%);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .page-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
+      border-radius: 24px;
+      overflow: hidden;
+      background: #f8f1e7;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 16px 30px rgba(0,0,0,0.28);
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
-      width: min(92vw, 460px);
-      height: min(78dvh, 760px);
-      border-radius: 24px;
-      overflow: hidden;
+    }
+
+    .page-face img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
       background: #f6efe6;
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+      user-select: none;
+      pointer-events: none;
     }
 
-    .page,
-    .flip-layer {
-      z-index: 5;
-      transform-origin: left center;
-      backface-visibility: hidden;
-      box-shadow: 0 0 20px rgba(0,0,0,0.18);
-      will-change: transform, opacity;
+    .page-back {
+      transform: rotateY(180deg);
+      background: #eadbc8;
     }
 
-    .flip-next {
-      animation: flipNext 0.65s cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+    .page.flipped {
+      transform: rotateY(-180deg);
     }
 
-    .flip-prev {
-      transform-origin: right center;
-      animation: flipPrev 0.65s cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
-    }
-
-    @keyframes flipNext {
-      0% { transform: rotateY(0deg); opacity: 1; }
-      100% { transform: rotateY(-160deg); opacity: 0; }
-    }
-
-    @keyframes flipPrev {
-      0% { transform: rotateY(0deg); opacity: 1; }
-      100% { transform: rotateY(160deg); opacity: 0; }
+    .page.dragging {
+      transition: none;
     }
 
     .bottombar {
@@ -150,7 +188,7 @@
         padding: 9px 12px;
       }
 
-      .frame {
+      .book-wrap {
         width: 94vw;
       }
     }
@@ -159,198 +197,177 @@
 <body>
   <div class="app">
     <div class="topbar">
-      <div class="pill" id="pageLabel">Page 1 of 4</div>
+      <div class="pill" id="pageCount">Page 1 of 4</div>
       <button class="music-btn" id="musicBtn">Pause music</button>
     </div>
 
-    <div class="viewer" id="viewer">
-      <div class="frame" id="frame"></div>
+    <div class="viewer">
+      <div class="book-wrap" id="bookWrap">
+        <div class="book-shadow"></div>
+        <div class="book" id="book"></div>
+      </div>
     </div>
 
     <div class="bottombar">
-      <div class="hint">Swipe left for next, swipe right for previous</div>
+      <div class="hint">Swipe anywhere on the page</div>
     </div>
   </div>
 
   <audio id="bgMusic" src="music.mp3" loop></audio>
 
   <script>
-    const pages = [
-      'images/page1.jpg',
-      'images/page2.jpg',
-      'images/page3.jpg',
-      'images/page4.jpg'
+    const pagesData = [
+      { image: 'images/page1.jpg', label: 'Page 1' },
+      { image: 'images/page2.jpg', label: 'Page 2' },
+      { image: 'images/page3.jpg', label: 'Page 3' },
+      { image: 'images/page4.jpg', label: 'Page 4' }
     ];
 
-    const frame = document.getElementById('frame');
-    const viewer = document.getElementById('viewer');
-    const pageLabel = document.getElementById('pageLabel');
+    const book = document.getElementById('book');
+    const pageCount = document.getElementById('pageCount');
     const music = document.getElementById('bgMusic');
     const musicBtn = document.getElementById('musicBtn');
+    const bookWrap = document.getElementById('bookWrap');
 
-    let currentIndex = 0;
+    let currentPage = 0;
     let startX = 0;
     let currentX = 0;
-    let dragging = false;
-    let animating = false;
-    let dragDirection = null;
-    let activeFlip = null;
-    let activePointerId = null;
+    let draggingPage = null;
+    let dragMode = null;
+    let isDragging = false;
 
-    function pageHTML(src, className = 'page') {
-      return `
-        <div class="${className}">
-          <img src="${src}" alt="Page image">
-        </div>
-      `;
+    function buildBook() {
+      book.innerHTML = '';
+
+      pagesData.forEach((page, index) => {
+        const pageEl = document.createElement('div');
+        pageEl.className = 'page';
+        pageEl.dataset.index = index;
+        pageEl.style.zIndex = pagesData.length - index;
+
+        const front = document.createElement('div');
+        front.className = 'page-face page-front';
+        front.innerHTML = `<img src="${page.image}" alt="${page.label}" />`;
+
+        const back = document.createElement('div');
+        back.className = 'page-face page-back';
+        const backImage = index + 1 < pagesData.length ? pagesData[index + 1].image : page.image;
+        back.innerHTML = `<img src="${backImage}" alt="Back of ${page.label}" />`;
+
+        pageEl.appendChild(front);
+        pageEl.appendChild(back);
+        book.appendChild(pageEl);
+      });
+
+      updateBook();
     }
 
-    function renderCurrent() {
-      frame.innerHTML = pageHTML(pages[currentIndex], 'page');
-      pageLabel.textContent = `Page ${currentIndex + 1} of ${pages.length}`;
-      activeFlip = null;
-      dragDirection = null;
+    function updateBook() {
+      const pages = [...document.querySelectorAll('.page')];
+      pages.forEach((page, index) => {
+        page.classList.toggle('flipped', index < currentPage);
+        page.style.zIndex = index < currentPage ? index + 1 : pagesData.length - index;
+      });
+      pageCount.textContent = `Page ${Math.min(currentPage + 1, pagesData.length)} of ${pagesData.length}`;
+      if (currentPage >= pagesData.length) {
+        pageCount.textContent = `Page ${pagesData.length} of ${pagesData.length}`;
+      }
     }
 
-    function setupDragLayer(direction) {
-      if (animating) return false;
-
-      if (direction === 'next' && currentIndex < pages.length - 1) {
-        frame.innerHTML = pageHTML(pages[currentIndex + 1], 'page') + pageHTML(pages[currentIndex], 'flip-layer');
-        activeFlip = frame.querySelector('.flip-layer');
-        activeFlip.style.transformOrigin = 'left center';
-        activeFlip.style.transform = 'rotateY(0deg)';
-        activeFlip.style.opacity = '1';
-        activeFlip.style.transition = 'none';
-        dragDirection = 'next';
-        return true;
+    function nextPage() {
+      if (currentPage < pagesData.length) {
+        currentPage += 1;
+        updateBook();
       }
-
-      if (direction === 'prev' && currentIndex > 0) {
-        frame.innerHTML = pageHTML(pages[currentIndex - 1], 'page') + pageHTML(pages[currentIndex], 'flip-layer');
-        activeFlip = frame.querySelector('.flip-layer');
-        activeFlip.style.transformOrigin = 'right center';
-        activeFlip.style.transform = 'rotateY(0deg)';
-        activeFlip.style.opacity = '1';
-        activeFlip.style.transition = 'none';
-        dragDirection = 'prev';
-        return true;
-      }
-
-      return false;
     }
 
-    function applyDragProgress(progress) {
-      if (!activeFlip) return;
-      const clamped = Math.max(0, Math.min(progress, 1));
-      const angle = 175 * clamped;
-      const opacity = 1 - clamped * 0.82;
-
-      if (dragDirection === 'next') {
-        activeFlip.style.transform = `rotateY(${-angle}deg)`;
-      } else {
-        activeFlip.style.transform = `rotateY(${angle}deg)`;
+    function prevPage() {
+      if (currentPage > 0) {
+        currentPage -= 1;
+        updateBook();
       }
-      activeFlip.style.opacity = `${opacity}`;
-    }
-
-    function settleTurn(shouldComplete) {
-      if (!activeFlip || !dragDirection) {
-        renderCurrent();
-        return;
-      }
-
-      animating = true;
-      activeFlip.style.transition = 'transform 0.24s ease, opacity 0.24s ease';
-
-      if (shouldComplete) {
-        if (dragDirection === 'next') {
-          activeFlip.style.transform = 'rotateY(-175deg)';
-          activeFlip.style.opacity = '0';
-          currentIndex += 1;
-        } else {
-          activeFlip.style.transform = 'rotateY(175deg)';
-          activeFlip.style.opacity = '0';
-          currentIndex -= 1;
-        }
-      } else {
-        activeFlip.style.transform = 'rotateY(0deg)';
-        activeFlip.style.opacity = '1';
-      }
-
-      window.setTimeout(() => {
-        animating = false;
-        renderCurrent();
-      }, 260);
     }
 
     function tryStartMusic() {
       music.play().catch(() => {});
     }
 
-    function getClientX(event) {
-      return event.clientX ?? 0;
-    }
-
-    function onPointerDown(event) {
-      if (animating) return;
-      tryStartMusic();
-      dragging = true;
-      activePointerId = event.pointerId;
-      startX = getClientX(event);
-      currentX = startX;
-      dragDirection = null;
-      activeFlip = null;
-      if (viewer.setPointerCapture) {
-        viewer.setPointerCapture(event.pointerId);
+    function getPageForDrag(direction) {
+      const pages = [...document.querySelectorAll('.page')];
+      if (direction === 'next' && currentPage < pagesData.length) {
+        return pages[currentPage];
       }
+      if (direction === 'prev' && currentPage > 0) {
+        return pages[currentPage - 1];
+      }
+      return null;
     }
 
-    function onPointerMove(event) {
-      if (!dragging || animating) return;
-      if (activePointerId !== null && event.pointerId !== activePointerId) return;
+    function onPointerDown(e) {
+      tryStartMusic();
+      startX = e.clientX ?? 0;
+      currentX = startX;
+      isDragging = true;
+      draggingPage = null;
+      dragMode = null;
+    }
 
-      currentX = getClientX(event);
-      const delta = currentX - startX;
-      const width = Math.max(frame.clientWidth, 1);
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      currentX = e.clientX ?? currentX;
+      const deltaX = currentX - startX;
 
-      if (!dragDirection) {
-        if (delta < -6) {
-          if (!setupDragLayer('next')) return;
-        } else if (delta > 6) {
-          if (!setupDragLayer('prev')) return;
+      if (!dragMode) {
+        if (deltaX < -12 && currentPage < pagesData.length) {
+          dragMode = 'next';
+          draggingPage = getPageForDrag('next');
+        } else if (deltaX > 12 && currentPage > 0) {
+          dragMode = 'prev';
+          draggingPage = getPageForDrag('prev');
         } else {
           return;
         }
+
+        if (draggingPage) {
+          draggingPage.classList.add('dragging');
+        }
       }
 
-      event.preventDefault();
+      if (!draggingPage) return;
 
-      if (dragDirection === 'next') {
-        applyDragProgress((-delta) / width);
+      let progress;
+      if (dragMode === 'next') {
+        progress = Math.min(Math.max((-deltaX) / bookWrap.clientWidth, 0), 1);
+        const angle = -180 * progress;
+        draggingPage.style.transform = `rotateY(${angle}deg)`;
       } else {
-        applyDragProgress(delta / width);
+        progress = Math.min(Math.max(1 - (deltaX / bookWrap.clientWidth), 0), 1);
+        const angle = -180 * progress;
+        draggingPage.style.transform = `rotateY(${angle}deg)`;
       }
     }
 
-    function onPointerEnd(event) {
-      if (!dragging || animating) return;
-      if (activePointerId !== null && event.pointerId !== activePointerId) return;
+    function onPointerUp() {
+      if (!isDragging) return;
+      isDragging = false;
+      const deltaX = currentX - startX;
+      const threshold = Math.max(60, bookWrap.clientWidth * 0.18);
 
-      dragging = false;
-      activePointerId = null;
-      const delta = currentX - startX;
-      const threshold = frame.clientWidth * 0.18;
-
-      if (!activeFlip || !dragDirection) {
-        return;
+      if (draggingPage) {
+        draggingPage.classList.remove('dragging');
+        draggingPage.style.transform = '';
       }
 
-      if (dragDirection === 'next') {
-        settleTurn((-delta) > threshold);
+      if (deltaX < -threshold) {
+        nextPage();
+      } else if (deltaX > threshold) {
+        prevPage();
       } else {
-        settleTurn(delta > threshold);
+        updateBook();
       }
+
+      draggingPage = null;
+      dragMode = null;
     }
 
     musicBtn.addEventListener('click', () => {
@@ -363,13 +380,16 @@
       }
     });
 
-    viewer.addEventListener('pointerdown', onPointerDown);
-    viewer.addEventListener('pointermove', onPointerMove);
-    viewer.addEventListener('pointerup', onPointerEnd);
-    viewer.addEventListener('pointercancel', onPointerEnd);
-    document.addEventListener('click', tryStartMusic, { once: true });
+    bookWrap.addEventListener('pointerdown', onPointerDown);
+    bookWrap.addEventListener('pointermove', onPointerMove);
+    bookWrap.addEventListener('pointerup', onPointerUp);
+    bookWrap.addEventListener('pointercancel', onPointerUp);
+    bookWrap.addEventListener('pointerleave', onPointerUp);
 
-    renderCurrent();
+    document.addEventListener('click', tryStartMusic, { once: true });
+    document.addEventListener('touchstart', tryStartMusic, { once: true, passive: true });
+
+    buildBook();
   </script>
 </body>
 </html>
