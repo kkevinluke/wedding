@@ -18,7 +18,7 @@
       overflow: hidden;
       background: #120c08;
       font-family: Georgia, serif;
-      touch-action: pan-y;
+      touch-action: none;
     }
 
     body {
@@ -94,33 +94,11 @@
 
     .page,
     .flip-layer {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      background: #f6efe6;
-      overflow: hidden;
-      border-radius: 24px;
-    }
-
-    .page img,
-    .flip-layer img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      background: #f6efe6;
-      display: block;
-      pointer-events: none;
-    }
-
-    .flip-layer {
       z-index: 5;
       transform-origin: left center;
       backface-visibility: hidden;
       box-shadow: 0 0 20px rgba(0,0,0,0.18);
+      will-change: transform, opacity;
     }
 
     .flip-next {
@@ -217,6 +195,7 @@
     let animating = false;
     let dragDirection = null;
     let activeFlip = null;
+    let activePointerId = null;
 
     function pageHTML(src, className = 'page') {
       return `
@@ -233,60 +212,64 @@
       dragDirection = null;
     }
 
-    function startDragLayer(direction) {
-      if (activeFlip || animating) return;
+    function setupDragLayer(direction) {
+      if (animating) return false;
 
       if (direction === 'next' && currentIndex < pages.length - 1) {
         frame.innerHTML = pageHTML(pages[currentIndex + 1], 'page') + pageHTML(pages[currentIndex], 'flip-layer');
         activeFlip = frame.querySelector('.flip-layer');
         activeFlip.style.transformOrigin = 'left center';
+        activeFlip.style.transform = 'rotateY(0deg)';
+        activeFlip.style.opacity = '1';
+        activeFlip.style.transition = 'none';
         dragDirection = 'next';
+        return true;
       }
 
       if (direction === 'prev' && currentIndex > 0) {
         frame.innerHTML = pageHTML(pages[currentIndex - 1], 'page') + pageHTML(pages[currentIndex], 'flip-layer');
         activeFlip = frame.querySelector('.flip-layer');
         activeFlip.style.transformOrigin = 'right center';
+        activeFlip.style.transform = 'rotateY(0deg)';
+        activeFlip.style.opacity = '1';
+        activeFlip.style.transition = 'none';
         dragDirection = 'prev';
+        return true;
       }
+
+      return false;
     }
 
-    function updateDrag() {
-      if (!dragging || !activeFlip || !dragDirection) return;
-
-      const delta = currentX - startX;
-      const width = frame.clientWidth;
-      let progress = 0;
+    function applyDragProgress(progress) {
+      if (!activeFlip) return;
+      const clamped = Math.max(0, Math.min(progress, 1));
+      const angle = 175 * clamped;
+      const opacity = 1 - clamped * 0.82;
 
       if (dragDirection === 'next') {
-        progress = Math.min(Math.max((-delta) / width, 0), 1);
-        const angle = -160 * progress;
-        activeFlip.style.transform = `rotateY(${angle}deg)`;
-        activeFlip.style.opacity = `${1 - progress * 0.8}`;
+        activeFlip.style.transform = `rotateY(${-angle}deg)`;
       } else {
-        progress = Math.min(Math.max(delta / width, 0), 1);
-        const angle = 160 * progress;
         activeFlip.style.transform = `rotateY(${angle}deg)`;
-        activeFlip.style.opacity = `${1 - progress * 0.8}`;
       }
+      activeFlip.style.opacity = `${opacity}`;
     }
 
-    function settleTurn(complete) {
+    function settleTurn(shouldComplete) {
       if (!activeFlip || !dragDirection) {
         renderCurrent();
         return;
       }
 
       animating = true;
-      activeFlip.style.transition = 'transform 0.28s ease, opacity 0.28s ease';
+      activeFlip.style.transition = 'transform 0.24s ease, opacity 0.24s ease';
 
-      if (complete) {
+      if (shouldComplete) {
         if (dragDirection === 'next') {
-          activeFlip.style.transform = 'rotateY(-160deg)';
+          activeFlip.style.transform = 'rotateY(-175deg)';
           activeFlip.style.opacity = '0';
           currentIndex += 1;
         } else {
-          activeFlip.style.transform = 'rotateY(160deg)';
+          activeFlip.style.transform = 'rotateY(175deg)';
           activeFlip.style.opacity = '0';
           currentIndex -= 1;
         }
@@ -295,60 +278,73 @@
         activeFlip.style.opacity = '1';
       }
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         animating = false;
         renderCurrent();
-      }, 300);
+      }, 260);
     }
 
     function tryStartMusic() {
       music.play().catch(() => {});
     }
 
-    function getClientX(e) {
-      if (e.touches && e.touches[0]) return e.touches[0].clientX;
-      if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientX;
-      return e.clientX || 0;
+    function getClientX(event) {
+      return event.clientX ?? 0;
     }
 
-    function onDown(e) {
+    function onPointerDown(event) {
       if (animating) return;
       tryStartMusic();
       dragging = true;
-      startX = getClientX(e);
+      activePointerId = event.pointerId;
+      startX = getClientX(event);
       currentX = startX;
       dragDirection = null;
       activeFlip = null;
+      if (viewer.setPointerCapture) {
+        viewer.setPointerCapture(event.pointerId);
+      }
     }
 
-    function onMove(e) {
+    function onPointerMove(event) {
       if (!dragging || animating) return;
-      currentX = getClientX(e);
+      if (activePointerId !== null && event.pointerId !== activePointerId) return;
+
+      currentX = getClientX(event);
       const delta = currentX - startX;
+      const width = Math.max(frame.clientWidth, 1);
 
       if (!dragDirection) {
-        if (delta < -8 && currentIndex < pages.length - 1) {
-          startDragLayer('next');
-        } else if (delta > 8 && currentIndex > 0) {
-          startDragLayer('prev');
+        if (delta < -6) {
+          if (!setupDragLayer('next')) return;
+        } else if (delta > 6) {
+          if (!setupDragLayer('prev')) return;
         } else {
           return;
         }
       }
 
-      updateDrag();
+      event.preventDefault();
+
+      if (dragDirection === 'next') {
+        applyDragProgress((-delta) / width);
+      } else {
+        applyDragProgress(delta / width);
+      }
     }
 
-    function onUp() {
+    function onPointerEnd(event) {
       if (!dragging || animating) return;
+      if (activePointerId !== null && event.pointerId !== activePointerId) return;
+
       dragging = false;
+      activePointerId = null;
+      const delta = currentX - startX;
+      const threshold = frame.clientWidth * 0.18;
 
       if (!activeFlip || !dragDirection) {
         return;
       }
-
-      const delta = currentX - startX;
-      const threshold = frame.clientWidth * 0.22;
 
       if (dragDirection === 'next') {
         settleTurn((-delta) > threshold);
@@ -367,18 +363,11 @@
       }
     });
 
-    viewer.addEventListener('pointerdown', onDown);
-    viewer.addEventListener('pointermove', onMove);
-    viewer.addEventListener('pointerup', onUp);
-    viewer.addEventListener('pointercancel', onUp);
-    viewer.addEventListener('pointerleave', onUp);
-
-    viewer.addEventListener('touchstart', onDown, { passive: true });
-    viewer.addEventListener('touchmove', onMove, { passive: true });
-    viewer.addEventListener('touchend', onUp);
-
+    viewer.addEventListener('pointerdown', onPointerDown);
+    viewer.addEventListener('pointermove', onPointerMove);
+    viewer.addEventListener('pointerup', onPointerEnd);
+    viewer.addEventListener('pointercancel', onPointerEnd);
     document.addEventListener('click', tryStartMusic, { once: true });
-    document.addEventListener('touchstart', tryStartMusic, { once: true, passive: true });
 
     renderCurrent();
   </script>
