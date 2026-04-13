@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Book Viewer V3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Mobile Page Viewer</title>
   <style>
     * {
       box-sizing: border-box;
@@ -16,136 +16,92 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
+      background: #120c08;
       font-family: Georgia, serif;
-      background: radial-gradient(circle at center, #3d2b1f 0%, #1a120d 60%, #0b0705 100%);
-      color: #fff;
       touch-action: pan-y;
+    }
+
+    body {
+      color: #fff;
     }
 
     .app {
       position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top, rgba(90, 58, 35, 0.35), transparent 45%),
+        linear-gradient(180deg, #2a1c14 0%, #120c08 100%);
     }
 
-    .top-pill,
-    .bottom-pill,
-    .side-pill,
-    .music-btn {
+    .topbar {
       position: absolute;
-      z-index: 30;
-      background: rgba(0,0,0,0.34);
+      top: max(14px, env(safe-area-inset-top));
+      left: 14px;
+      right: 14px;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pill,
+    .music-btn {
+      background: rgba(0, 0, 0, 0.32);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 999px;
+      -webkit-backdrop-filter: blur(8px);
       color: #fff;
-      font-size: 14px;
+      border-radius: 999px;
       padding: 10px 14px;
-    }
-
-    .top-pill {
-      top: 18px;
-      left: 50%;
-      transform: translateX(-50%);
-    }
-
-    .bottom-pill {
-      bottom: 18px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 13px;
-    }
-
-    .side-pill {
-      top: 18px;
-      left: 18px;
+      font-size: 12px;
+      line-height: 1;
     }
 
     .music-btn {
-      top: 18px;
-      right: 18px;
       cursor: pointer;
     }
 
     .viewer {
-      position: relative;
-      width: 100%;
-      height: 100%;
+      position: absolute;
+      inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      perspective: 2400px;
-    }
-
-    .shadow {
-      position: absolute;
-      bottom: 4%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 78%;
-      height: 22px;
-      border-radius: 50%;
-      background: rgba(0,0,0,0.35);
-      filter: blur(16px);
-      z-index: 1;
+      padding:
+        calc(max(64px, env(safe-area-inset-top) + 52px))
+        14px
+        calc(max(72px, env(safe-area-inset-bottom) + 56px));
+      perspective: 1800px;
     }
 
     .frame {
       position: relative;
-      z-index: 2;
-      transition: width 0.45s ease, height 0.45s ease;
-      transform-style: preserve-3d;
-    }
-
-    .page-surface,
-    .flip-layer {
-      width: 100%;
-      height: 100%;
-      border-radius: 22px;
+      width: min(92vw, 460px);
+      height: min(78dvh, 760px);
+      border-radius: 24px;
       overflow: hidden;
       background: #f6efe6;
-      box-shadow: 0 18px 34px rgba(0,0,0,0.28);
       border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
     }
 
-    .page-surface.single,
-    .flip-layer.single {
-      display: block;
-    }
-
-    .page-surface.spread,
-    .flip-layer.spread {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      position: relative;
-    }
-
-    .page-surface.spread::before,
-    .flip-layer.spread::before {
-      content: "";
+    .page,
+    .flip-layer {
       position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 50%;
-      width: 2px;
-      transform: translateX(-50%);
-      background: linear-gradient(to bottom, rgba(90,55,30,0.06), rgba(40,20,8,0.26), rgba(90,55,30,0.06));
-      z-index: 5;
-    }
-
-    .panel {
-      position: relative;
+      inset: 0;
       width: 100%;
       height: 100%;
+      background: #f6efe6;
       overflow: hidden;
-      background: #f8f1e7;
+      border-radius: 24px;
     }
 
-    .panel img {
+    .page img,
+    .flip-layer img {
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -154,80 +110,91 @@
     }
 
     .flip-layer {
-      position: absolute;
-      inset: 0;
-      z-index: 10;
-      pointer-events: none;
+      z-index: 5;
       transform-origin: left center;
       backface-visibility: hidden;
+      box-shadow: 0 0 20px rgba(0,0,0,0.18);
     }
 
     .flip-next {
-      animation: flipNext 0.85s cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+      animation: flipNext 0.65s cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
     }
 
     .flip-prev {
-      animation: flipPrev 0.85s cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+      transform-origin: right center;
+      animation: flipPrev 0.65s cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
     }
 
     @keyframes flipNext {
       0% { transform: rotateY(0deg); opacity: 1; }
-      100% { transform: rotateY(-180deg); opacity: 0; }
+      100% { transform: rotateY(-160deg); opacity: 0; }
     }
 
     @keyframes flipPrev {
       0% { transform: rotateY(0deg); opacity: 1; }
-      100% { transform: rotateY(180deg); opacity: 0; }
+      100% { transform: rotateY(160deg); opacity: 0; }
     }
 
-    @media (max-width: 780px) {
-      .top-pill,
-      .bottom-pill,
-      .side-pill,
-      .music-btn {
-        font-size: 12px;
+    .bottombar {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      z-index: 20;
+      display: flex;
+      justify-content: center;
+    }
+
+    .hint {
+      background: rgba(0, 0, 0, 0.32);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: #fff;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 380px) {
+      .pill,
+      .music-btn,
+      .hint {
+        font-size: 11px;
         padding: 9px 12px;
+      }
+
+      .frame {
+        width: 94vw;
       }
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="top-pill">Version 3, swipe left and right</div>
-    <div class="side-pill" id="pageLabel">Page 1</div>
-    <button class="music-btn" id="musicBtn">Pause music</button>
+    <div class="topbar">
+      <div class="pill" id="pageLabel">Page 1 of 4</div>
+      <button class="music-btn" id="musicBtn">Pause music</button>
+    </div>
+
     <div class="viewer" id="viewer">
-      <div class="shadow"></div>
       <div class="frame" id="frame"></div>
     </div>
-    <div class="bottom-pill">Only 3 states, 1, then 2 and 3, then 4</div>
+
+    <div class="bottombar">
+      <div class="hint">Swipe left for next, swipe right for previous</div>
+    </div>
   </div>
 
   <audio id="bgMusic" src="music.mp3" loop></audio>
 
   <script>
-    const states = [
-      {
-        label: 'Page 1',
-        mode: 'single',
-        width: Math.min(window.innerWidth * 0.46, 460),
-        height: Math.min(window.innerHeight * 0.82, 680),
-        images: ['images/page1.jpg']
-      },
-      {
-        label: 'Pages 2 and 3',
-        mode: 'spread',
-        width: Math.min(window.innerWidth * 0.92, 920),
-        height: Math.min(window.innerHeight * 0.82, 680),
-        images: ['images/page2.jpg', 'images/page3.jpg']
-      },
-      {
-        label: 'Page 4',
-        mode: 'single',
-        width: Math.min(window.innerWidth * 0.46, 460),
-        height: Math.min(window.innerHeight * 0.82, 680),
-        images: ['images/page4.jpg']
-      }
+    const pages = [
+      'images/page1.jpg',
+      'images/page2.jpg',
+      'images/page3.jpg',
+      'images/page4.jpg'
     ];
 
     const frame = document.getElementById('frame');
@@ -236,85 +203,41 @@
     const music = document.getElementById('bgMusic');
     const musicBtn = document.getElementById('musicBtn');
 
-    let index = 0;
+    let currentIndex = 0;
     let startX = 0;
     let currentX = 0;
     let dragging = false;
     let animating = false;
 
-    function recalcSizes() {
-      states[0].width = Math.min(window.innerWidth * 0.46, 460);
-      states[0].height = Math.min(window.innerHeight * 0.82, 680);
-      states[1].width = Math.min(window.innerWidth * 0.92, 920);
-      states[1].height = Math.min(window.innerHeight * 0.82, 680);
-      states[2].width = Math.min(window.innerWidth * 0.46, 460);
-      states[2].height = Math.min(window.innerHeight * 0.82, 680);
-      applyFrameSize(states[index]);
-    }
-
-    function surfaceHTML(state) {
-      if (state.mode === 'single') {
-        return `
-          <div class="page-surface single">
-            <div class="panel"><img src="${state.images[0]}" alt="${state.label}"></div>
-          </div>
-        `;
-      }
-
+    function pageHTML(src, className = 'page') {
       return `
-        <div class="page-surface spread">
-          <div class="panel"><img src="${state.images[0]}" alt="Page 2"></div>
-          <div class="panel"><img src="${state.images[1]}" alt="Page 3"></div>
+        <div class="${className}">
+          <img src="${src}" alt="Page image">
         </div>
       `;
-    }
-
-    function flipHTML(state, extraClass = '') {
-      if (state.mode === 'single') {
-        return `
-          <div class="flip-layer single ${extraClass}">
-            <div class="panel"><img src="${state.images[0]}" alt="${state.label}"></div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="flip-layer spread ${extraClass}">
-          <div class="panel"><img src="${state.images[0]}" alt="Page 2"></div>
-          <div class="panel"><img src="${state.images[1]}" alt="Page 3"></div>
-        </div>
-      `;
-    }
-
-    function applyFrameSize(state) {
-      frame.style.width = `${state.width}px`;
-      frame.style.height = `${state.height}px`;
     }
 
     function renderCurrent() {
-      const state = states[index];
-      applyFrameSize(state);
-      frame.innerHTML = surfaceHTML(state);
-      pageLabel.textContent = state.label;
+      frame.innerHTML = pageHTML(pages[currentIndex], 'page');
+      pageLabel.textContent = `Page ${currentIndex + 1} of ${pages.length}`;
     }
 
     function transitionTo(nextIndex, direction) {
-      if (animating || nextIndex < 0 || nextIndex >= states.length) return;
+      if (animating || nextIndex < 0 || nextIndex >= pages.length) return;
       animating = true;
 
-      const outgoing = states[index];
-      const incoming = states[nextIndex];
+      const outgoing = pages[currentIndex];
+      const incoming = pages[nextIndex];
       const flipClass = direction === 'next' ? 'flip-next' : 'flip-prev';
 
-      applyFrameSize(incoming);
-      frame.innerHTML = surfaceHTML(incoming) + flipHTML(outgoing, flipClass);
-      pageLabel.textContent = incoming.label;
-      index = nextIndex;
+      frame.innerHTML = pageHTML(incoming, 'page') + pageHTML(outgoing, `flip-layer ${flipClass}`);
+      currentIndex = nextIndex;
+      pageLabel.textContent = `Page ${currentIndex + 1} of ${pages.length}`;
 
       setTimeout(() => {
-        frame.innerHTML = surfaceHTML(states[index]);
+        renderCurrent();
         animating = false;
-      }, 860);
+      }, 680);
     }
 
     function tryStartMusic() {
@@ -337,12 +260,12 @@
       if (!dragging) return;
       dragging = false;
       const delta = currentX - startX;
-      const threshold = Math.max(60, viewer.clientWidth * 0.12);
+      const threshold = Math.max(45, viewer.clientWidth * 0.12);
 
       if (delta < -threshold) {
-        transitionTo(index + 1, 'next');
+        transitionTo(currentIndex + 1, 'next');
       } else if (delta > threshold) {
-        transitionTo(index - 1, 'prev');
+        transitionTo(currentIndex - 1, 'prev');
       }
     }
 
@@ -361,8 +284,9 @@
     viewer.addEventListener('pointerup', onUp);
     viewer.addEventListener('pointercancel', onUp);
     viewer.addEventListener('pointerleave', onUp);
+
     document.addEventListener('click', tryStartMusic, { once: true });
-    window.addEventListener('resize', recalcSizes);
+    document.addEventListener('touchstart', tryStartMusic, { once: true, passive: true });
 
     renderCurrent();
   </script>
